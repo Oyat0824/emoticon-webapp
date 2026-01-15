@@ -5,6 +5,8 @@ let emoticons = [];
 let copiedEmoticonUrl = null;
 let visibleCategories = new Set(); // 표시할 카테고리 목록
 let categorySettingsSearchTimeout = null; // 카테고리 설정 검색 디바운스용
+let deleteMode = false; // 삭제 모드 상태
+let deleteTargetCategory = null; // 삭제할 카테고리
 
 // 초기화
 $(document).ready(function() {
@@ -76,6 +78,21 @@ $(document).ready(function() {
 		$('#category-settings-list input[type="checkbox"]').prop('checked', false);
 	});
 
+	// 삭제 모드 토글
+	$('#delete-mode-toggle').on('click', function() {
+		toggleDeleteMode();
+	});
+
+	// 카테고리 삭제 모달 이벤트
+	$('#close-delete-category-modal, #cancel-delete-category').on('click', function() {
+		closeDeleteCategoryModal();
+	});
+
+	$('#delete-category-form').on('submit', function(e) {
+		e.preventDefault();
+		handleCategoryDelete();
+	});
+
 	// 카테고리 설정 모달 검색 기능 (디바운스 적용)
 	$('#category-settings-search').on('input', function() {
 		const searchTerm = $(this).val();
@@ -115,12 +132,24 @@ function fetchCategories() {
 		url: '/api/categories',
 		method: 'GET',
 		success: function(data) {
+			const oldCategoryNames = new Set(categories.map(function(cat) {
+				return cat.name;
+			}));
+
 			categories = data;
 
 			// localStorage에 저장된 설정이 없으면 모든 카테고리 표시
 			if (visibleCategories.size === 0) {
 				categories.forEach(function(cat) {
 					visibleCategories.add(cat.name);
+				});
+				saveVisibleCategories();
+			} else {
+				// 새로 추가된 카테고리는 자동으로 visibleCategories에 추가
+				categories.forEach(function(cat) {
+					if (!oldCategoryNames.has(cat.name)) {
+						visibleCategories.add(cat.name);
+					}
 				});
 				saveVisibleCategories();
 			}
@@ -257,12 +286,19 @@ function renderEmoticons() {
 		$imageWrapper.append($imageContainer);
 
 		const $deleteBtn = $('<button>')
-			.addClass('absolute top-1 right-1 bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-700 z-10')
+			.addClass('delete-btn absolute top-1 right-1 bg-red-600 text-white rounded-full w-6 h-6 flex items-center justify-center transition-opacity hover:bg-red-700 z-10')
 			.html('&times;')
 			.on('click', function(e) {
 				e.stopPropagation();
 				confirmDelete(emoticon, categoryName);
 			});
+
+		// 삭제 모드에 따라 버튼 표시/숨김
+		if (deleteMode) {
+			$deleteBtn.addClass('opacity-100');
+		} else {
+			$deleteBtn.addClass('opacity-0');
+		}
 
 		$item.append($imageWrapper);
 		$item.append($deleteBtn);
@@ -673,6 +709,13 @@ function openSettingsModal() {
 	$('#category-settings-search').val('');
 	renderCategorySettingsList();
 	$('#settings-modal').removeClass('hidden');
+
+	// 삭제 모드 안내 메시지 표시/숨김
+	if (deleteMode) {
+		$('#delete-mode-notice').removeClass('hidden');
+	} else {
+		$('#delete-mode-notice').addClass('hidden');
+	}
 }
 
 // 카테고리 설정 목록 렌더링 - 모든 카테고리를 체크박스로 표시
@@ -699,9 +742,147 @@ function renderCategorySettingsList() {
 			.addClass('ml-3 flex-1 cursor-pointer')
 			.html('<span class="font-medium">' + category.displayName + '</span> <span class="text-gray-500 text-sm">(' + category.count + '개)</span>');
 
+		// 삭제 모드일 때만 삭제 버튼 표시
+		const $deleteBtn = $('<button>')
+			.addClass('ml-2 px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700 transition-colors')
+			.text('삭제')
+			.on('click', function(e) {
+				e.stopPropagation();
+				confirmDeleteCategory(category);
+			});
+
 		$item.append($checkbox);
 		$item.append($label);
+		if (deleteMode) {
+			$item.append($deleteBtn);
+		}
 		$list.append($item);
+	});
+}
+
+// 삭제 모드 토글 - 삭제 모드를 켜고 끄며 삭제 버튼 표시/숨김
+function toggleDeleteMode() {
+	deleteMode = !deleteMode;
+	const $toggleBtn = $('#delete-mode-toggle');
+
+	if (deleteMode) {
+		// 삭제 모드 ON: 빨간색 배경, 흰색 텍스트
+		$toggleBtn.removeClass('bg-gray-600 hover:bg-gray-700');
+		$toggleBtn.addClass('bg-red-600 hover:bg-red-700 ring-2 ring-red-300');
+		// 모든 삭제 버튼 표시
+		$('.delete-btn').addClass('opacity-100').removeClass('opacity-0');
+	} else {
+		// 삭제 모드 OFF: 회색 배경, 흰색 텍스트
+		$toggleBtn.removeClass('bg-red-600 hover:bg-red-700 ring-2 ring-red-300');
+		$toggleBtn.addClass('bg-gray-600 hover:bg-gray-700');
+		// 모든 삭제 버튼 숨김
+		$('.delete-btn').addClass('opacity-0').removeClass('opacity-100');
+	}
+
+	// 카테고리 설정 모달이 열려있으면 다시 렌더링 및 안내 메시지 업데이트
+	if (!$('#settings-modal').hasClass('hidden')) {
+		renderCategorySettingsList();
+		if (deleteMode) {
+			$('#delete-mode-notice').removeClass('hidden');
+		} else {
+			$('#delete-mode-notice').addClass('hidden');
+		}
+	}
+}
+
+// 카테고리 삭제 확인 모달 열기
+function confirmDeleteCategory(category) {
+	deleteTargetCategory = category;
+	const categoryName = category.displayName || category.name;
+	$('#delete-category-name').text(categoryName + ' (' + category.count + '개)');
+
+	const savedPassword = sessionStorage.getItem('uploadPassword');
+	$('#delete-category-password').val(savedPassword || '');
+	$('#delete-category-modal').removeClass('hidden');
+
+	setTimeout(function() {
+		if (savedPassword) {
+			$('#confirm-delete-category').focus();
+		} else {
+			$('#delete-category-password').focus();
+		}
+	}, 100);
+}
+
+// 카테고리 삭제 모달 닫기
+function closeDeleteCategoryModal() {
+	$('#delete-category-modal').addClass('hidden');
+	deleteTargetCategory = null;
+}
+
+// 카테고리 삭제 처리 - 서버에 카테고리 폴더 삭제 요청
+function handleCategoryDelete() {
+	const password = $('#delete-category-password').val().trim();
+
+	if (!password) {
+		showToast('비밀번호를 입력해주세요.');
+		return;
+	}
+
+	if (!deleteTargetCategory) {
+		showToast('삭제할 카테고리를 찾을 수 없습니다.');
+		return;
+	}
+
+	const category = deleteTargetCategory.name;
+
+	$.ajax({
+		url: '/api/categories/' + encodeURIComponent(category),
+		method: 'DELETE',
+		contentType: 'application/json',
+		data: JSON.stringify({ password: password }),
+		success: function(response) {
+			sessionStorage.setItem('uploadPassword', password);
+			showToast('카테고리가 삭제되었습니다.');
+			closeDeleteCategoryModal();
+
+			// 카테고리 목록 갱신
+			$.ajax({
+				url: '/api/categories',
+				method: 'GET',
+				success: function(data) {
+					categories = data;
+
+					// 삭제된 카테고리를 visibleCategories에서 제거
+					visibleCategories.delete(category);
+					saveVisibleCategories();
+
+					// 카테고리 버튼 렌더링
+					renderCategories();
+
+					// 카테고리 설정 모달이 열려있으면 목록 다시 렌더링
+					if (!$('#settings-modal').hasClass('hidden')) {
+						renderCategorySettingsList();
+					}
+
+					// 삭제된 카테고리가 선택되어 있었다면 첫 번째 카테고리 선택
+					if (selectedCategory === category) {
+						const visibleCats = categories.filter(function(cat) {
+							return visibleCategories.has(cat.name);
+						});
+						if (visibleCats.length > 0) {
+							selectCategory(visibleCats[0].name);
+						} else if (categories.length > 0) {
+							selectCategory(categories[0].name);
+						} else {
+							$('#emoticon-section').html('<div class="text-center py-12 text-gray-500">이모티콘이 없습니다.</div>');
+						}
+					}
+				},
+				error: function() {
+					showToast('카테고리 목록을 불러오는데 실패했습니다.');
+				}
+			});
+		},
+		error: function(xhr) {
+			const errorMsg = xhr.responseJSON?.error || '카테고리 삭제에 실패했습니다.';
+			showToast(errorMsg);
+		}
 	});
 }
 
