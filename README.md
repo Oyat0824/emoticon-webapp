@@ -18,9 +18,9 @@
 			- [Nginx 설치](#nginx-설치)
 		- [2. 프로젝트 배포](#2-프로젝트-배포)
 		- [3. 백엔드 서버 실행](#3-백엔드-서버-실행)
-		- [4. Nginx 설정](#4-nginx-설정)
-		- [5. 방화벽 설정](#5-방화벽-설정)
-		- [6. HTTPS 설정](#6-https-설정)
+		- [4. 방화벽 설정](#4-방화벽-설정)
+		- [5. HTTPS 설정](#5-https-설정)
+		- [6. Nginx 설정](#6-nginx-설정)
 			- [Certbot 설치](#certbot-설치)
 			- [DNS 설정](#dns-설정)
 			- [SSL 인증서 발급](#ssl-인증서-발급)
@@ -165,7 +165,131 @@ pm2 startup  # 출력되는 명령어 실행
 pm2 save
 ```
 
-### 4. Nginx 설정
+### 4. 방화벽 설정
+
+```bash
+# 목록 확인
+sudo iptables -L INPUT -n -v --line-numbers
+
+# 방화벽 규칙 추가 (HTTP, HTTPS)
+sudo iptables -I INPUT 5 -p tcp -m state --state NEW --dport 80 -j ACCEPT
+sudo iptables -I INPUT 6 -p tcp -m state --state NEW --dport 443 -j ACCEPT
+
+# 규칙 저장 (Ubuntu/Debian)
+sudo apt install -y iptables-persistent
+sudo netfilter-persistent save
+```
+
+### 5. HTTPS 설정
+
+도메인을 사용한다면 HTTPS 설정이 필요합니다. 클립보드 복사 기능이 HTTPS에서만 제대로 작동합니다.
+
+#### Certbot 설치
+
+```bash
+sudo apt update
+sudo apt install -y certbot python3-certbot-nginx python3-certbot-dns-cloudflare
+```
+
+#### Cloudflare API 토큰 생성
+
+Cloudflare → My Profile → API Tokens
+Create Token
+권한 설정:
+- Zone → DNS → Edit
+- Zone → Zone → Read
+토큰 생성 후 복사
+
+#### Cloudflare 자격 증명 파일 생성
+
+```bash
+sudo mkdir -p /etc/letsencrypt
+sudo nano /etc/letsencrypt/cloudflare.ini
+```
+
+다음 내용 입력:
+```
+dns_cloudflare_api_token = YOUR_API_TOKEN_HERE
+```
+
+```bash
+sudo chmod 600 /etc/letsencrypt/cloudflare.ini
+```
+
+#### DNS 설정
+
+도메인 관리 페이지에서 A 레코드 추가:
+```
+타입: A
+호스트: @ (또는 원하는 서브도메인)
+값: 서버 IP 주소
+TTL: 3600
+```
+
+DNS 전파 확인:
+```bash
+nslookup yourdomain.com
+```
+
+#### SSL 인증서 발급
+
+DNS-01 챌린지를 사용하여 인증서 발급 (Cloudflare 사용 시):
+
+```bash
+sudo certbot certonly --dns-cloudflare --dns-cloudflare-credentials /etc/letsencrypt/cloudflare.ini -d yourdomain.com
+```
+
+또는 HTTP-01 챌린지를 사용하는 경우 (일반적인 방법):
+
+```bash
+sudo certbot certonly --standalone -d yourdomain.com
+```
+
+질문에 답변:
+- Email: 입력
+- Terms of Service: Y
+- Share email: N (또는 원하는 대로)
+
+#### 인증서 자동 갱신 설정
+
+인증서 갱신 후 Nginx를 자동으로 재시작하도록 설정:
+
+```bash
+sudo nano /etc/letsencrypt/renewal/yourdomain.com.conf
+```
+
+`[renewalparams]` 섹션에 다음 줄 추가:
+```
+post_hook = systemctl reload nginx
+```
+
+또는 전역 설정으로 적용하려면:
+
+```bash
+sudo nano /etc/letsencrypt/cli.ini
+```
+
+다음 내용 추가:
+```
+post-hook = systemctl reload nginx
+```
+
+#### 인증서 자동 갱신 확인
+
+```bash
+# 자동 갱신 타이머 확인
+sudo systemctl list-timers | grep certbot
+
+# 갱신 테스트
+sudo certbot renew --dry-run
+
+# 인증서 만료일 확인
+sudo certbot certificates
+```
+
+자동 갱신은 만료 30일 전부터 시도하고, 성공하면 설정한 post_hook이 실행되어 Nginx가 자동으로 재시작됩니다.
+
+### 6. Nginx 설정
 
 ```bash
 sudo nano /etc/nginx/sites-available/emoticon-web
@@ -176,10 +300,6 @@ sudo nano /etc/nginx/sites-available/emoticon-web
 ```nginx
 # HTTP를 HTTPS로 리다이렉트
 server {
-    if ($host = yourdomain.com) {
-        return 301 https://$host$request_uri;
-    }
-
 	listen 80;
 	server_name yourdomain.com;
 	return 301 https://$server_name$request_uri;
@@ -261,68 +381,6 @@ sudo rm -f /etc/nginx/sites-enabled/default
 sudo nginx -t
 sudo systemctl restart nginx
 ```
-
-### 5. 방화벽 설정
-
-```bash
-sudo ufw allow 80/tcp
-sudo ufw allow 443/tcp
-sudo ufw allow 22/tcp
-sudo ufw enable
-```
-
-### 6. HTTPS 설정
-
-도메인을 사용한다면 HTTPS 설정이 필요합니다. 클립보드 복사 기능이 HTTPS에서만 제대로 작동합니다.
-
-#### Certbot 설치
-
-```bash
-sudo apt update
-sudo apt install -y certbot python3-certbot-nginx
-```
-
-#### DNS 설정
-
-도메인 관리 페이지에서 A 레코드 추가:
-```
-타입: A
-호스트: @ (또는 원하는 서브도메인)
-값: 서버 IP 주소
-TTL: 3600
-```
-
-DNS 전파 확인:
-```bash
-nslookup yourdomain.com
-```
-
-#### SSL 인증서 발급
-
-```bash
-sudo certbot --nginx -d yourdomain.com
-```
-
-질문에 답변:
-- Email: 입력
-- Terms of Service: Y
-- Share email: N (또는 원하는 대로)
-- Redirect HTTP to HTTPS: Y
-
-#### 인증서 자동 갱신 확인
-
-```bash
-# 자동 갱신 타이머 확인
-sudo systemctl list-timers | grep certbot
-
-# 갱신 테스트
-sudo certbot renew --dry-run
-
-# 인증서 만료일 확인
-sudo certbot certificates
-```
-
-자동 갱신은 만료 30일 전부터 시도하고, 성공하면 Nginx도 자동으로 재시작됩니다.
 
 ## 이모티콘 관리
 
