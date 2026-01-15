@@ -61,6 +61,8 @@ emoticon_web/
 │   ├── index.html         # 메인 HTML
 │   └── app.js             # jQuery로 작성한 프론트엔드 로직
 ├── _emoticons/            # 이모티콘 이미지들
+├── favicon.ico            # 파비콘 (브라우저 탭 아이콘)
+├── og-image.png           # 공유 이미지 (카카오톡, 디스코드 등 링크 미리보기)
 ├── package.json           # 프로젝트 의존성 및 스크립트
 ├── .gitignore             # Git 제외 파일 목록
 └── README.md              # 프로젝트 설명서
@@ -226,6 +228,18 @@ server {
 		proxy_cache_bypass $http_upgrade;
 	}
 
+	# 파비콘 및 공유 이미지 프록시 (Express 서버에서 처리)
+	location ~ ^/(favicon\.(ico|png)|og-image\.png)$ {
+		proxy_pass http://localhost:3000;
+		proxy_http_version 1.1;
+		proxy_set_header Host $host;
+		proxy_set_header X-Real-IP $remote_addr;
+		proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+		proxy_set_header X-Forwarded-Proto $scheme;
+		expires 1y;
+		add_header Cache-Control "public, immutable";
+	}
+
 	# 프론트엔드 정적 파일 캐싱
 	location ~* \.(css|js)$ {
 		expires 1y;
@@ -372,8 +386,14 @@ pm2 restart emoticon-web
 1. **DNS 설정**: 새 도메인 관리 페이지에서 A 레코드 추가
 2. **SSL 인증서 발급**: `sudo certbot --nginx -d yourdomain.com`
 3. **Nginx 설정 수정**: `server_name`과 `ssl_certificate` 경로 변경
-4. **Nginx 재시작**: `sudo systemctl restart nginx`
-5. (선택사항) **기존 인증서 삭제**: `sudo certbot delete --cert-name yourdomain.com`
+4. **Open Graph 메타 태그 수정**: `frontend/index.html`에서 도메인 URL 변경
+   ```html
+   <meta property="og:url" content="https://새도메인.com">
+   <meta property="og:image" content="https://새도메인.com/og-image.png">
+   ```
+5. **Nginx 재시작**: `sudo systemctl restart nginx`
+6. **서버 재시작**: `pm2 restart emoticon-web`
+7. (선택사항) **기존 인증서 삭제**: `sudo certbot delete --cert-name yourdomain.com`
 
 ### 도메인 만료 시
 
