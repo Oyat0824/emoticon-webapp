@@ -304,6 +304,34 @@ app.delete('/api/emoticons/:category/:filename', async (req, res) => {
 	}
 });
 
+// 카테고리 삭제
+app.delete('/api/categories/:category', async (req, res) => {
+	try {
+		const { password } = req.body;
+		if (!verifyPassword(password)) {
+			return res.status(401).json({ error: '비밀번호가 올바르지 않습니다.' });
+		}
+
+		const { category } = req.params;
+		const categoryPath = path.join(EMOTICON_BASE_PATH, category);
+
+		const exists = await fs.pathExists(categoryPath);
+		if (!exists) {
+			return res.status(404).json({ error: '카테고리를 찾을 수 없습니다.' });
+		}
+
+		await fs.remove(categoryPath);
+
+		res.json({
+			success: true,
+			message: '카테고리가 삭제되었습니다.'
+		});
+	} catch (error) {
+		console.error('카테고리 삭제 실패:', error);
+		res.status(500).json({ error: '카테고리 삭제에 실패했습니다.' });
+	}
+});
+
 app.listen(PORT, () => {
 	console.log(`서버가 포트 ${PORT}에서 실행 중입니다.`);
 	console.log(`이모티콘 경로: ${EMOTICON_BASE_PATH}`);
