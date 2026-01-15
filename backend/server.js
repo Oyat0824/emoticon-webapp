@@ -13,16 +13,29 @@ const PORT = process.env.PORT || 3000;
 const UPLOAD_PASSWORD = process.env.UPLOAD_PASSWORD || 'default123';
 
 // 업로드 제한 설정
-const MAX_FILE_SIZE = 1 * 1024 * 1024; // 1MB
+const MAX_IMAGE_FILE_SIZE = 1 * 1024 * 1024; // 1MB (이미지 파일)
+const MAX_ZIP_FILE_SIZE = 10 * 1024 * 1024; // 10MB (ZIP 파일)
 const MAX_IMAGE_SIZE = 200; // 200x200 픽셀
 const ALLOWED_TYPES = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif'];
 
 app.use(cors());
 app.use(express.json());
 
-const EMOTICON_BASE_PATH = path.join(__dirname, '..', '_emoticons');
+// 프론트엔드
 app.use(express.static(path.join(__dirname, '..', 'frontend')));
+
+// 이모티콘 이미지
+const EMOTICON_BASE_PATH = path.join(__dirname, '..', '_emoticons');
 app.use('/emoticons', express.static(EMOTICON_BASE_PATH));
+
+// 파비콘 및 공유 이미지
+const PROJECT_ROOT = path.join(__dirname, '..');
+app.get('/favicon.ico', (req, res) => {
+	res.sendFile(path.join(PROJECT_ROOT, 'favicon.ico'));
+});
+app.get('/og-image.png', (req, res) => {
+	res.sendFile(path.join(PROJECT_ROOT, 'og-image.png'));
+});
 
 // 카테고리 목록 조회
 app.get('/api/categories', async (req, res) => {
@@ -90,7 +103,7 @@ app.get('/api/emoticons/:category', async (req, res) => {
 const upload = multer({
 	storage: multer.memoryStorage(),
 	limits: {
-		fileSize: 10 * 1024 * 1024 // 10MB
+		fileSize: MAX_ZIP_FILE_SIZE // ZIP 파일을 허용하기 위해 10MB로 설정
 	},
 	fileFilter: (req, file, cb) => {
 		if (ALLOWED_TYPES.includes(file.mimetype) || file.mimetype === 'application/zip' || file.mimetype === 'application/x-zip-compressed') {
@@ -228,6 +241,11 @@ app.post('/api/upload', upload.single('image'), async (req, res) => {
 		              req.file.mimetype === 'application/x-zip-compressed' ||
 		              req.file.originalname.toLowerCase().endsWith('.zip');
 
+		// 이미지 파일 크기 체크 (1MB 제한)
+		if (!isZip && req.file.size > MAX_IMAGE_FILE_SIZE) {
+			return res.status(400).json({ error: `이미지 파일 크기는 ${MAX_IMAGE_FILE_SIZE / (1024 * 1024)}MB 이하여야 합니다.` });
+		}
+
 		if (isZip) {
 			const uploadedFiles = await processZipFile(req.file.buffer, category);
 			return res.json({
@@ -259,7 +277,7 @@ app.post('/api/upload', upload.single('image'), async (req, res) => {
 		}
 
 		if (error.code === 'LIMIT_FILE_SIZE') {
-			return res.status(400).json({ error: `파일 크기는 10MB 이하여야 합니다.` });
+			return res.status(400).json({ error: `ZIP 파일 크기는 ${MAX_ZIP_FILE_SIZE / (1024 * 1024)}MB 이하여야 합니다.` });
 		}
 
 		res.status(500).json({ error: '파일 업로드에 실패했습니다.' });
