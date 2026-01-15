@@ -3,6 +3,8 @@ let categories = [];
 let selectedCategory = null;
 let emoticons = [];
 let copiedEmoticonUrl = null;
+let visibleCategories = new Set(); // 표시할 카테고리 목록
+let categorySettingsSearchTimeout = null; // 카테고리 설정 검색 디바운스용
 
 // 초기화
 $(document).ready(function() {
@@ -25,18 +27,6 @@ $(document).ready(function() {
 
 	$('#upload-file').on('change', function(e) {
 		handleFilePreview(e.target.files[0]);
-	});
-
-	$('#upload-category').on('change', function() {
-		if ($(this).val()) {
-			$('#new-category').val('');
-		}
-	});
-
-	$('#new-category').on('input', function() {
-		if ($(this).val()) {
-			$('#upload-category').val('');
-		}
 	});
 
 	$('#upload-form').on('submit', function(e) {
@@ -64,9 +54,60 @@ $(document).ready(function() {
 			handleDelete();
 		}
 	});
+
+	// 카테고리 설정 모달
+	$('#settings-btn').on('click', function() {
+		openSettingsModal();
+	});
+
+	$('#close-settings-modal, #cancel-settings').on('click', function() {
+		closeSettingsModal();
+	});
+
+	$('#save-settings').on('click', function() {
+		saveCategorySettings();
+	});
+
+	$('#select-all-categories').on('click', function() {
+		$('#category-settings-list input[type="checkbox"]').prop('checked', true);
+	});
+
+	$('#deselect-all-categories').on('click', function() {
+		$('#category-settings-list input[type="checkbox"]').prop('checked', false);
+	});
+
+	// 카테고리 설정 모달 검색 기능 (디바운스 적용)
+	$('#category-settings-search').on('input', function() {
+		const searchTerm = $(this).val();
+
+		// 이전 타이머가 있으면 취소
+		if (categorySettingsSearchTimeout) {
+			clearTimeout(categorySettingsSearchTimeout);
+		}
+
+		// 300ms 후에 검색 실행 (디바운스)
+		categorySettingsSearchTimeout = setTimeout(function() {
+			filterCategorySettings(searchTerm);
+		}, 300);
+	});
+
+	$('#upload-category').on('change', function() {
+		if ($(this).val()) {
+			$('#new-category').val('');
+		}
+	});
+
+	$('#new-category').on('input', function() {
+		if ($(this).val()) {
+			$('#upload-category').val('').trigger('change');
+		}
+	});
+
+	// localStorage에서 표시할 카테고리 로드
+	loadVisibleCategories();
 });
 
-// 카테고리 목록 조회
+// 카테고리 목록 조회 - 서버에서 카테고리 목록을 가져와서 화면에 표시
 function fetchCategories() {
 	showLoading();
 
@@ -75,9 +116,30 @@ function fetchCategories() {
 		method: 'GET',
 		success: function(data) {
 			categories = data;
+
+			// localStorage에 저장된 설정이 없으면 모든 카테고리 표시
+			if (visibleCategories.size === 0) {
+				categories.forEach(function(cat) {
+					visibleCategories.add(cat.name);
+				});
+				saveVisibleCategories();
+			}
+
 			renderCategories();
 
-			if (categories.length > 0 && !selectedCategory) {
+			// 표시된 카테고리 중 첫 번째 선택
+			const visibleCats = categories.filter(function(cat) {
+				return visibleCategories.has(cat.name);
+			});
+
+			if (visibleCats.length > 0 && !selectedCategory) {
+				selectCategory(visibleCats[0].name);
+			} else if (visibleCats.length === 0 && categories.length > 0) {
+				// 표시된 카테고리가 없으면 모든 카테고리 표시
+				categories.forEach(function(cat) {
+					visibleCategories.add(cat.name);
+				});
+				saveVisibleCategories();
 				selectCategory(categories[0].name);
 			}
 
@@ -89,12 +151,22 @@ function fetchCategories() {
 	});
 }
 
-// 카테고리 버튼 렌더링
+// 카테고리 버튼 렌더링 - 사용자가 선택한 카테고리만 버튼으로 표시
 function renderCategories() {
 	const $container = $('#category-buttons');
 	$container.empty();
 
-	categories.forEach(function(category) {
+	// 표시할 카테고리만 필터링
+	const visibleCats = categories.filter(function(category) {
+		return visibleCategories.has(category.name);
+	});
+
+	if (visibleCats.length === 0) {
+		$container.html('<p class="text-gray-500 text-sm">표시할 카테고리가 없습니다. 설정에서 카테고리를 선택해주세요.</p>');
+		return;
+	}
+
+	visibleCats.forEach(function(category) {
 		const isSelected = selectedCategory === category.name;
 		const buttonClass = isSelected
 			? 'px-4 py-2 rounded-lg font-medium transition-colors bg-blue-600 text-white'
@@ -111,14 +183,14 @@ function renderCategories() {
 	});
 }
 
-// 카테고리 선택
+// 카테고리 선택 - 선택한 카테고리의 이모티콘 목록을 불러옴
 function selectCategory(categoryName) {
 	selectedCategory = categoryName;
 	renderCategories();
 	fetchEmoticons(categoryName);
 }
 
-// 이모티콘 목록 조회
+// 이모티콘 목록 조회 - 선택한 카테고리의 이모티콘 이미지 목록을 서버에서 가져옴
 function fetchEmoticons(category) {
 	showLoading();
 
@@ -224,7 +296,7 @@ function renderEmoticons() {
 	$section.append($grid);
 }
 
-// 클립보드에 이미지 복사
+// 클립보드에 이미지 복사 - 이모티콘 이미지를 클립보드에 복사 (GIF는 다운로드)
 async function copyToClipboard(imageUrl) {
 	let absoluteUrl = imageUrl;
 	if (imageUrl.startsWith('/')) {
@@ -328,7 +400,7 @@ function hideLoading() {
 	$('#loading-overlay').addClass('hidden');
 }
 
-// 에러 메시지 표시/숨김
+// 에러 메시지 표시/숨김 - API 호출 실패 시 에러 메시지 표시
 function showError(message) {
 	$('#error-message p').text('오류: ' + message);
 	$('#error-message').removeClass('hidden');
@@ -339,7 +411,7 @@ function hideError() {
 	$('#error-message').addClass('hidden');
 }
 
-// 토스트 메시지 표시
+// 토스트 메시지 표시 - 작업 완료나 알림 메시지를 화면 하단에 표시
 function showToast(message) {
 	const $toast = $('#toast');
 	const $toastMessage = $('#toast-message');
@@ -358,15 +430,59 @@ function showToast(message) {
 	}, 3000);
 }
 
-// 업로드 모달 열기/닫기
+// Select2 초기화 함수 - 업로드 모달의 카테고리 선택 드롭다운을 검색 가능하게 만듦
+function initSelect2() {
+	if ($('#upload-category').hasClass('select2-hidden-accessible')) {
+		$('#upload-category').select2('destroy');
+	}
+
+	const $categorySelect = $('#upload-category');
+	$categorySelect.select2({
+		placeholder: '카테고리 검색 및 선택',
+		allowClear: false,
+		minimumResultsForSearch: 0, // 항상 검색 필드 표시
+		language: {
+			noResults: function() {
+				return '검색 결과가 없습니다.';
+			},
+			searching: function() {
+				return '검색 중...';
+			}
+		},
+		// 한글 검색을 위한 커스텀 매처 - 카테고리 이름과 표시 이름 모두 검색 가능
+		matcher: function(params, data) {
+			if (!params.term || params.term.trim() === '') {
+				return data;
+			}
+			const term = params.term.toLowerCase().trim();
+			const text = data.text.toLowerCase();
+			const id = data.id ? data.id.toLowerCase() : '';
+			if (text.includes(term) || id.includes(term)) {
+				return data;
+			}
+			return null;
+		},
+		dropdownParent: $('#upload-modal'), // 모달 내에서 드롭다운이 제대로 표시되도록 설정
+		width: '100%'
+	});
+}
+
+// 업로드 모달 열기 - 카테고리 목록을 select에 추가하고 Select2 초기화
 function openUploadModal() {
 	const $categorySelect = $('#upload-category');
 	$categorySelect.empty();
 	$categorySelect.append('<option value="">카테고리 선택</option>');
 
 	categories.forEach(function(category) {
-		$categorySelect.append($('<option>').val(category.name).text(category.displayName));
+		$categorySelect.append($('<option>')
+			.val(category.name)
+			.text(category.displayName + ' (' + category.count + ')'));
 	});
+
+	// 옵션 추가 후 Select2 초기화 (비동기 처리)
+	setTimeout(function() {
+		initSelect2();
+	}, 10);
 
 	const savedPassword = sessionStorage.getItem('uploadPassword');
 	$('#upload-form')[0].reset();
@@ -377,13 +493,17 @@ function openUploadModal() {
 	$('#upload-modal').removeClass('hidden');
 }
 
+// 업로드 모달 닫기 - Select2 인스턴스 제거 및 폼 초기화
 function closeUploadModal() {
+	if ($('#upload-category').hasClass('select2-hidden-accessible')) {
+		$('#upload-category').select2('destroy');
+	}
 	$('#upload-modal').addClass('hidden');
 	$('#upload-form')[0].reset();
 	$('#upload-preview').addClass('hidden');
 }
 
-// 파일 미리보기 처리
+// 파일 미리보기 처리 - 업로드할 파일의 미리보기 이미지와 정보 표시
 function handleFilePreview(file) {
 	if (!file) {
 		$('#upload-preview').addClass('hidden');
@@ -463,6 +583,7 @@ function handleFilePreview(file) {
 // 삭제 관련 변수 및 함수
 let deleteTargetEmoticon = null;
 
+// 삭제 확인 모달 열기 - 삭제할 이모티콘 정보를 모달에 표시
 function confirmDelete(emoticon, categoryName) {
 	deleteTargetEmoticon = emoticon;
 	$('#delete-filename').text(`${categoryName} / ${emoticon.filename}`);
@@ -480,12 +601,13 @@ function confirmDelete(emoticon, categoryName) {
 	}, 100);
 }
 
+// 삭제 모달 닫기
 function closeDeleteModal() {
 	$('#delete-modal').addClass('hidden');
 	deleteTargetEmoticon = null;
 }
 
-// 이미지 삭제 처리
+// 이미지 삭제 처리 - 서버에 삭제 요청을 보내고 성공 시 목록 갱신
 function handleDelete() {
 	const password = $('#delete-password').val().trim();
 
@@ -543,6 +665,119 @@ function handleDelete() {
 			showToast(errorMsg);
 		}
 	});
+}
+
+// 카테고리 설정 모달 열기 - 표시할 카테고리를 선택할 수 있는 체크박스 목록 표시
+function openSettingsModal() {
+	// 검색 필드 초기화
+	$('#category-settings-search').val('');
+	renderCategorySettingsList();
+	$('#settings-modal').removeClass('hidden');
+}
+
+// 카테고리 설정 목록 렌더링 - 모든 카테고리를 체크박스로 표시
+function renderCategorySettingsList() {
+	const $list = $('#category-settings-list');
+	$list.empty();
+
+	categories.forEach(function(category) {
+		const isVisible = visibleCategories.has(category.name);
+		const $item = $('<div>')
+			.addClass('category-settings-item flex items-center p-3 border border-gray-200 rounded-lg hover:bg-gray-50')
+			.attr('data-category-name', category.name.toLowerCase())
+			.attr('data-category-display', category.displayName.toLowerCase());
+
+		const $checkbox = $('<input>')
+			.attr('type', 'checkbox')
+			.attr('id', 'cat-' + category.name)
+			.attr('data-category', category.name)
+			.prop('checked', isVisible)
+			.addClass('w-5 h-5 text-blue-600 rounded focus:ring-blue-500');
+
+		const $label = $('<label>')
+			.attr('for', 'cat-' + category.name)
+			.addClass('ml-3 flex-1 cursor-pointer')
+			.html('<span class="font-medium">' + category.displayName + '</span> <span class="text-gray-500 text-sm">(' + category.count + '개)</span>');
+
+		$item.append($checkbox);
+		$item.append($label);
+		$list.append($item);
+	});
+}
+
+// 카테고리 설정 검색 필터링 - 검색어에 따라 카테고리 목록 필터링
+function filterCategorySettings(searchTerm) {
+	const term = searchTerm.toLowerCase().trim();
+	const $items = $('.category-settings-item');
+
+	if (term === '') {
+		$items.show();
+		return;
+	}
+
+	$items.each(function() {
+		const $item = $(this);
+		const categoryName = $item.attr('data-category-name');
+		const categoryDisplay = $item.attr('data-category-display');
+
+		if (categoryName.includes(term) || categoryDisplay.includes(term)) {
+			$item.show();
+		} else {
+			$item.hide();
+		}
+	});
+}
+
+// 카테고리 설정 모달 닫기
+function closeSettingsModal() {
+	$('#settings-modal').addClass('hidden');
+}
+
+// 카테고리 설정 저장 - 체크박스로 선택한 카테고리만 표시하도록 설정
+function saveCategorySettings() {
+	visibleCategories.clear();
+
+	$('#category-settings-list input[type="checkbox"]:checked').each(function() {
+		const categoryName = $(this).data('category');
+		visibleCategories.add(categoryName);
+	});
+
+	saveVisibleCategories();
+	renderCategories();
+
+	// 현재 선택된 카테고리가 숨겨졌다면 첫 번째 표시된 카테고리 선택
+	if (!visibleCategories.has(selectedCategory)) {
+		const visibleCats = categories.filter(function(cat) {
+			return visibleCategories.has(cat.name);
+		});
+		if (visibleCats.length > 0) {
+			selectCategory(visibleCats[0].name);
+		} else {
+			$('#emoticon-section').html('<div class="text-center py-12 text-gray-500">표시할 카테고리가 없습니다.</div>');
+		}
+	}
+
+	showToast('카테고리 설정이 저장되었습니다.');
+	closeSettingsModal();
+}
+
+// localStorage에 표시할 카테고리 저장 - 브라우저 재시작 후에도 설정 유지
+function saveVisibleCategories() {
+	const categoriesArray = Array.from(visibleCategories);
+	localStorage.setItem('visibleCategories', JSON.stringify(categoriesArray));
+}
+
+// localStorage에서 표시할 카테고리 로드 - 저장된 카테고리 표시 설정 불러오기
+function loadVisibleCategories() {
+	const saved = localStorage.getItem('visibleCategories');
+	if (saved) {
+		try {
+			const categoriesArray = JSON.parse(saved);
+			visibleCategories = new Set(categoriesArray);
+		} catch (e) {
+			console.error('카테고리 설정 로드 실패:', e);
+		}
+	}
 }
 
 // 파일 업로드 처리
