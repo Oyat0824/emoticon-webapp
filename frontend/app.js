@@ -348,16 +348,23 @@ async function copyToClipboard(imageUrl) {
 		const blob = await response.blob();
 
 		if (blob.type === 'image/gif') {
-			const link = document.createElement('a');
-			link.href = URL.createObjectURL(blob);
-			link.download = imageUrl.split('/').pop() || 'emoticon.gif';
-			document.body.appendChild(link);
-			link.click();
-			document.body.removeChild(link);
-			URL.revokeObjectURL(link.href);
-
-			showToast('GIF 애니메이션은 클립보드 복사가 불가능합니다. 다운로드되었습니다.');
-			return;
+			// GIF는 URL 복사
+			if (navigator.clipboard && navigator.clipboard.writeText) {
+				try {
+					await navigator.clipboard.writeText(absoluteUrl);
+					showCopiedFeedback(imageUrl);
+					showToast('URL이 클립보드에 복사되었습니다.');
+					return;
+				} catch (err) {
+					console.error('URL 복사 실패:', err);
+					showToast('URL 복사에 실패했습니다: ' + absoluteUrl);
+					return;
+				}
+			} else {
+				// 클립보드 API를 지원하지 않는 경우
+				showToast('URL: ' + absoluteUrl);
+				return;
+			}
 		}
 
 		if (navigator.clipboard && navigator.clipboard.write && typeof ClipboardItem !== 'undefined') {
