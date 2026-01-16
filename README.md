@@ -19,10 +19,26 @@
 ```
 emoticon_web/
 ├── backend/
-│   └── server.js          # Express 서버 (API + 정적 파일 서빙)
+│   ├── server.js          # Express 서버 진입점
+│   ├── config.js          # 설정 상수 (파일 크기 제한, 경로 등)
+│   ├── middleware/
+│   │   └── upload.js      # Multer 파일 업로드 미들웨어
+│   ├── routes/
+│   │   ├── categories.js  # 카테고리 API 라우트
+│   │   ├── emoticons.js   # 이모티콘 API 라우트
+│   │   └── upload.js      # 업로드 API 라우트
+│   └── utils/
+│       ├── auth.js        # 인증 유틸리티
+│       └── fileHandler.js # 파일 처리 유틸리티
 ├── frontend/
 │   ├── index.html         # 메인 HTML
-│   └── app.js             # jQuery로 작성한 프론트엔드 로직
+│   └── js/
+│       ├── app.js         # 메인 애플리케이션 파일 (이벤트 핸들러 등록)
+│       ├── api.js         # API 호출 함수
+│       ├── ui.js          # UI 렌더링 함수
+│       ├── modals.js      # 모달 관리 함수
+│       ├── clipboard.js   # 클립보드 복사 함수
+│       └── utils.js       # 유틸리티 함수
 ├── _emoticons/            # 이모티콘 이미지들
 ├── favicon.ico            # 파비콘 (브라우저 탭 아이콘)
 ├── og-image.png           # 공유 이미지 (카카오톡, 디스코드 등 링크 미리보기)
@@ -72,7 +88,7 @@ npm start
 - GIF: 애니메이션 유지 (원본 그대로 저장)
 
 **ZIP 파일:**
-- 파일 크기: 최대 10MB
+- 파일 크기: 최대 20MB
 - 내부 이미지: PNG, JPG, GIF, WEBP 자동 추출
 - 크기 검증: 각 이미지 200x200 픽셀 이하만 저장
 - macOS 메타데이터: `__MACOSX` 폴더 및 `._` 파일 자동 제외
@@ -273,7 +289,7 @@ server {
 	listen 443 ssl http2;
 	server_name yourdomain.com;
 
-	client_max_body_size 10m;
+	client_max_body_size 30m;
 
 	# SSL 인증서 (Certbot이 발급한 경로)
     ssl_certificate /etc/letsencrypt/live/yourdomain.com/fullchain.pem;

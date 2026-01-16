@@ -191,8 +191,8 @@
 	</div>
 
 	<!-- 토스트 메시지 -->
-	<div id="toast" class="hidden fixed bottom-4 right-4 bg-gray-800 text-white px-6 py-3 rounded-lg shadow-lg z-[100] transform transition-all duration-300 opacity-0 translate-y-2">
-		<p id="toast-message" class="text-sm"></p>
+	<div id="toast" class="hidden fixed top-4 right-4 bg-gray-800 text-white px-6 py-4 rounded-lg shadow-lg z-[100] transform transition-all duration-300 opacity-0 -translate-y-2 min-w-[300px] max-w-[500px]">
+		<p id="toast-message" class="text-base font-medium"></p>
 	</div>
 
 	<!-- 삭제 확인 모달 -->
@@ -327,7 +327,7 @@
 				<div class="mb-4">
 					<label class="block text-sm font-medium text-gray-700 mb-2">이미지 파일</label>
 					<input type="file" id="upload-file" accept="image/png,image/jpeg,image/jpg,image/gif,.zip" class="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" required>
-					<p class="text-xs text-gray-500 mt-1">단일 이미지: 최대 1MB, 200x200 픽셀 초과 시 자동 리사이즈 (PNG, JPG만, GIF는 크기 제한)<br>ZIP 파일: 최대 10MB, 내부 이미지 파일만 추출</p>
+					<p class="text-xs text-gray-500 mt-1">단일 이미지: 최대 1MB, 200x200 픽셀 초과 시 자동 리사이즈 (PNG, JPG만, GIF는 크기 제한)<br>ZIP 파일: 최대 20MB, 내부 이미지 파일만 추출</p>
 				</div>
 
 				<!-- 미리보기 -->
@@ -350,6 +350,11 @@
 		</div>
 	</div>
 
-	<script src="app.js"></script>
+	<script src="js/api.js"></script>
+	<script src="js/ui.js"></script>
+	<script src="js/modals.js"></script>
+	<script src="js/clipboard.js"></script>
+	<script src="js/utils.js"></script>
+	<script src="js/app.js"></script>
 </body>
 </html>
