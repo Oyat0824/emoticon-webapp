@@ -21,17 +21,56 @@ function fetchCategories() {
 
 			categories = data;
 
+			// localStorage에서 선택된 카테고리 불러오기
+			const saved = localStorage.getItem('visibleCategories');
+			const hasSavedSettings = saved && saved !== '[]';
+
+			if (hasSavedSettings) {
+				try {
+					const savedArray = JSON.parse(saved);
+					if (savedArray && savedArray.length > 0) {
+						visibleCategories = new Set(savedArray);
+					}
+				} catch (e) {
+					console.error('카테고리 설정 로드 실패:', e);
+				}
+			}
+
+			// localStorage에 저장된 설정이 없으면 모든 카테고리 추가
 			if (visibleCategories.size === 0) {
 				categories.forEach(function(cat) {
 					visibleCategories.add(cat.name);
 				});
 				saveVisibleCategories();
 			} else {
+				// 이전 모든 카테고리 목록 불러오기
+				const savedAllCategories = localStorage.getItem('allCategories');
+				let previousAllCategories = [];
+				if (savedAllCategories) {
+					try {
+						previousAllCategories = JSON.parse(savedAllCategories);
+					} catch (e) {
+						console.error('모든 카테고리 목록 로드 실패:', e);
+					}
+				}
+
+				// 서버에 없는 카테고리는 제거
+				visibleCategories.forEach(function(catName) {
+					if (!categories.some(function(cat) { return cat.name === catName; })) {
+						visibleCategories.delete(catName);
+					}
+				});
+
+				// 신규 카테고리 감지 및 자동 추가
+				const previousAllCategoriesSet = new Set(previousAllCategories);
 				categories.forEach(function(cat) {
-					if (!oldCategoryNames.has(cat.name)) {
+					if (!previousAllCategoriesSet.has(cat.name)) {
+						// 신규 카테고리 발견 - 자동으로 추가
 						visibleCategories.add(cat.name);
 					}
 				});
+
+				// 모든 카테고리 목록 업데이트
 				saveVisibleCategories();
 			}
 
@@ -44,10 +83,8 @@ function fetchCategories() {
 			if (visibleCats.length > 0 && !selectedCategory) {
 				selectCategory(visibleCats[0].name);
 			} else if (visibleCats.length === 0 && categories.length > 0) {
-				categories.forEach(function(cat) {
-					visibleCategories.add(cat.name);
-				});
-				saveVisibleCategories();
+				// visibleCats가 0인 경우는 이미 위에서 처리했으므로
+				// 여기서는 첫 번째 카테고리만 선택
 				selectCategory(categories[0].name);
 			}
 

@@ -180,11 +180,18 @@ function saveCategorySettings() {
 
 /**
  * 표시할 카테고리 목록을 localStorage에 저장합니다.
+ * 선택된 카테고리와 모든 카테고리 목록을 모두 저장합니다.
  * 브라우저를 재시작해도 설정이 유지됩니다.
  */
 function saveVisibleCategories() {
 	const categoriesArray = Array.from(visibleCategories);
 	localStorage.setItem('visibleCategories', JSON.stringify(categoriesArray));
+	
+	// 모든 카테고리 목록도 저장 (신규 카테고리 감지용)
+	const allCategoryNames = categories.map(function(cat) {
+		return cat.name;
+	});
+	localStorage.setItem('allCategories', JSON.stringify(allCategoryNames));
 }
 
 /**
