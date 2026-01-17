@@ -14,7 +14,12 @@
  */
 async function copyToClipboard(imageUrl) {
 	const now = Date.now();
-	if (isCopying || now - lastCopyTime < COPY_COOLDOWN) {
+	if (isCopying) {
+		showToast('복사 중입니다. 잠시만 기다려주세요.');
+		return;
+	}
+	if (now - lastCopyTime < COPY_COOLDOWN) {
+		showToast('잠시 후 다시 시도해주세요.');
 		return;
 	}
 
@@ -77,6 +82,7 @@ async function copyToClipboard(imageUrl) {
 			const item = new ClipboardItem({ 'image/png': pngBlob });
 			await navigator.clipboard.write([item]);
 			showCopiedFeedback(imageUrl);
+			showToast('이미지가 클립보드에 복사되었습니다.');
 		} else {
 			const link = document.createElement('a');
 			link.href = URL.createObjectURL(blob);
